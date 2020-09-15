@@ -36,6 +36,20 @@ flag{level2:W7RU>asPZP846[P6J6(44PVXAW7R6p}
 level2@management:~$ cat this\ file\ has\ tons\ of\ spaces 
 flag{level3:t{4Z49Z9RUj4MZ2}bMg32e7u9ek;yv}
 
+## Level 3
+level3@management:~$ ls
+in here
+level3@management:~$ cd in\ here/
+level3@management:~/in here$ ls
+in here
+level3@management:~/in here$ cd in\ here/
+level3@management:~/in here/in here$ ls
+README
+level3@management:~/in here/in here$ cat README 
+Here it is
+
+flag{level4:Rneb9Prg82m3J2c8T%x266V*9L*dLm}
+
 
 
 
