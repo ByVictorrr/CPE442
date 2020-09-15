@@ -50,6 +50,22 @@ Here it is
 
 flag{level4:Rneb9Prg82m3J2c8T%x266V*9L*dLm}
 
+## Level 4
+level4@management:~$ find . -type f
+./.bashrc
+./.viminfo
+./.cache/motd.legal-displayed
+./README
+./.profile
+./.ssh/known_hosts
+./5/2/8/7/FOUND
+./listmyfolder.txt
+./.Xauthority
+./.bash_logout
+level4@management:~$ cat 5/2/8/7/FOUND 
+flag{level5;fYFJYEL47u8A4k78k6^*ho$y32ouE8}
+
+
 
 
 
