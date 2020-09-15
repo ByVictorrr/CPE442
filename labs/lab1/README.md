@@ -75,6 +75,13 @@ level6@management:~$ ls HERE* | xargs cat | grep -o "flag{.*}"
 flag{level7:E%o7JCj4G7qVm8e9JX382gA23)G#NL}
 
 ## Level 7
+$ cat spinning | tr '[q-za-p]' '[a-z]' | tr '[Q-ZA-P]' '[A-Z]'
+flag{level8:WPcK8d*o9orNo47>MPeYo4638XC?66}
+
+## Level 8
+level8@management:~$ cat README 
+flag{Congratulations!; bp7GDV6RdVhk92f6o9G^74k4.8az?L}
+
 
 
 
