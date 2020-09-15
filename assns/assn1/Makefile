@@ -15,14 +15,11 @@ all: .depend $(BINARY)
 .depend: $(C_FILES)
 	rm -f ./.depend
 	$(CC) $(CFLAGS) -MM $^ > ./.depend;
-	echo $(OBJS)
-	
 
 include .depend
 
 
 $(BINARY): $(OBJS)
-	echo $(OBJS)
 	$(CC) $(LDFLAGS) $^ -o $@
 
 

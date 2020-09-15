@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include "header.h"
 
-int main(){
+void print_hi_hi(){
 	print_hi();
-	return 0;
-}
+	print_hi();
+};
+
