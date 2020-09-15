@@ -65,6 +65,12 @@ level4@management:~$ find . -type f
 level4@management:~$ cat 5/2/8/7/FOUND 
 flag{level5;fYFJYEL47u8A4k78k6^*ho$y32ouE8}
 
+## Level 5
+
+level5@management:~$ cat FINDIT | grep -o 'flag{.*}'
+flag{level6:64%7?Emr6bWa697yALNJJd39>gT8jP}
+
+## Level 6
 
 
 
