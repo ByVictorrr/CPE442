@@ -71,6 +71,10 @@ level5@management:~$ cat FINDIT | grep -o 'flag{.*}'
 flag{level6:64%7?Emr6bWa697yALNJJd39>gT8jP}
 
 ## Level 6
+level6@management:~$ ls HERE* | xargs cat | grep -o "flag{.*}"
+flag{level7:E%o7JCj4G7qVm8e9JX382gA23)G#NL}
+
+## Level 7
 
 
 
