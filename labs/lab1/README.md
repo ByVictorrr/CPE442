@@ -32,5 +32,10 @@ level1@management:~$ cat .README
 Congrats! You found the hidden file.
 
 flag{level2:W7RU>asPZP846[P6J6(44PVXAW7R6p}
+## Level 2
+level2@management:~$ cat this\ file\ has\ tons\ of\ spaces 
+flag{level3:t{4Z49Z9RUj4MZ2}bMg32e7u9ek;yv}
+
+
 
 
