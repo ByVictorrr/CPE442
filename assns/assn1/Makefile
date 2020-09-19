@@ -1,29 +1,30 @@
 # Assignment 1 - Template Makefile
-SHELL := /bin/bash
-CC = gcc
-LDFLAGS = 
-CFLAGS =  -g
-# need a way to input all c files and headers
-C_FILES = $(shell find . -name "*.c")
-BINARY = main
-OBJS = $(C_FILES:.c=.o)
+# for C
+CC?= g++
+CFLAGS?= -g
+LDFLAGS?=
+SOURCES?= 
+TARGET?=
+PROGS=$(wildcard *.c)
 
-all: .depend $(BINARY)
+all: $(PROGS) .depend $(TARGET)
 
 # This is to get the depencies of all the c files
-
-.depend: $(C_FILES)
+.depend: $(SOURCES)
 	rm -f ./.depend
 	$(CC) $(CFLAGS) -MM $^ > ./.depend;
 
 include .depend
 
+$(TARGET): $(SOURCES)
+	$(CC) $(CFLAGS) $(TARGET) -o $(TARGET) $(LDFLAGS)
 
-$(BINARY): $(OBJS)
-	$(CC) $(LDFLAGS) $^ -o $@
-
+.c:
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
 clean:
-	rm -f *.o .depend
+	rm -f $(PROGS:.c=) *.o .depend
+
+
 
 
