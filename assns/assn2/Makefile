@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 CC = g++
 LDFLAGS = 
-CFLAGS =  -g -I/usr/local/opencv4
+CFLAGS =  -g `pkg-config --cflags --libs opencv4` 
 # need a way to input all c files and headers
 C_FILES = $(shell find . -name "*.cpp")
 BINARY = sobel
@@ -18,9 +18,11 @@ all: .depend $(BINARY)
 
 include .depend
 
+%.o: %.cpp
+	$(CC) $(CFLAGS) -c -o $@ $^
 
 $(BINARY): $(OBJS)
-	$(CC) $(C_FLAGS) $(LDFLAGS) $^ -o $@ 
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@ 
 
 clean:
 	rm -f $(OBJS) .depend
