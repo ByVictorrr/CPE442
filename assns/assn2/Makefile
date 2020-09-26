@@ -5,7 +5,7 @@ LDFLAGS =
 CFLAGS =  -g `pkg-config --cflags --libs opencv4` 
 # need a way to input all c files and headers
 C_FILES = $(shell find . -name "*.cpp")
-BINARY = sobel
+BINARY = sobel3b3
 OBJS = $(C_FILES:.cpp=.o)
 
 all: .depend $(BINARY)
