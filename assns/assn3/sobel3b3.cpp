@@ -103,7 +103,7 @@ void *t_cvt_sobel(void *data)
 int main(int argc, char *argv[])
 {
     VideoCapture inputVideo;
-    double displayTime = 33.36;  // display frame for 33.36ms (29.97fps, std video)
+    double displayTime = 33.36; // in miliseconds (33.36 = 29.97fps, std 30hz video)
 
     //parse args
     if (argc < 2)
@@ -111,6 +111,7 @@ int main(int argc, char *argv[])
         cerr << "sobel <video_file> " << endl;
         exit(EXIT_FAILURE);
     }
+    // use -i cmdline flag for single frame
     if (argc == 3)
     {
         if (argv[2][0] == '-')
@@ -155,14 +156,14 @@ int main(int argc, char *argv[])
         }
 
         //join based on ID
-        if (workers.join(frameNum, (void **)&frame, sizeof(Mat)) < 0)
+        if (workers.join(frameNum, (void **)&frame) < 0)
         {
             exit(EXIT_FAILURE);
         }
 
         //once data is available, show
         imshow("sobel filter", *frame);
-        waitKey(displayTime);
+        waitKey(displayTime); // display frame for N ms 
         qdframes--;
         frameNum++;
 

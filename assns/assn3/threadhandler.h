@@ -26,7 +26,7 @@ public:
 
     int create(void *data_in, t_func func);
     int create(size_t id, void *data_in, t_func func);
-    int join(size_t t_id, void **data_out, size_t size);
+    int join(size_t t_id, void **data_out);
     int joinAll(void *data_out, size_t size);
 };
 

@@ -66,7 +66,7 @@ int ThreadHandler::create(size_t id, void *data_in, t_func func)
     return 0;
 }
 
-int ThreadHandler::join(size_t t_id, void **data_out, size_t size)
+int ThreadHandler::join(size_t t_id, void **data_out)
 {
     if (t_id >= this->t_count)
         t_id = t_id % this->t_count;
