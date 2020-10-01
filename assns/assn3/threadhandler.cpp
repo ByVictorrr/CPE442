@@ -66,13 +66,13 @@ int ThreadHandler::create(size_t id, void *data_in, t_func func)
     return 0;
 }
 
-int ThreadHandler::join(size_t t_id, void *data_out, size_t size)
+int ThreadHandler::join(size_t t_id, void **data_out, size_t size)
 {
     if (t_id >= this->t_count)
         t_id = t_id % this->t_count;
 
     void *temp = 0;
-    if (pthread_join(this->t_handles[t_id], &temp) != 0)
+    if (pthread_join(this->t_handles[t_id], data_out) != 0)
     {
         perror("thread join error");
         return -1;
@@ -81,9 +81,6 @@ int ThreadHandler::join(size_t t_id, void *data_out, size_t size)
     //clear args
     memset(&this->t_handles[t_id], 0, sizeof(pthread_t));
     memset(&this->t_args[t_id], 0, sizeof(t_arg));
-
-    // copy return value into assigned variable
-    memcpy(data_out, temp, size);
 
     return 0;
 }

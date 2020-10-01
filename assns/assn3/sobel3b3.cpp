@@ -95,6 +95,7 @@ void *t_cvt_sobel(void *data)
     // Step 2 - apply sobel filter
     sobel_filter(&sw, gray, sobel);
 
+    free(gray);
     free(data);
     return (void *)sobel;
 }
@@ -128,12 +129,12 @@ int main(int argc, char *argv[])
 
     ThreadHandler workers(FRAMEBUFSIZE);
 
-    Mat frame;
+    Mat *frame;
     size_t frameNum = 0, qdframes = 0;
     bool isEmpty = false;
     while (1)
     {
-        // add FRAMEBUFSIZE - 1 frames to buffer queue
+        // add FRAMEBUFSIZE frames to buffer queue
         while (qdframes < FRAMEBUFSIZE)
         {
             Mat *img = new Mat;
@@ -153,17 +154,19 @@ int main(int argc, char *argv[])
             qdframes++;
         }
 
-        //join
-        if (workers.join(frameNum, &frame, sizeof(Mat)) < 0)
+        //join based on ID
+        if (workers.join(frameNum, (void **)&frame, sizeof(Mat)) < 0)
         {
             exit(EXIT_FAILURE);
         }
 
         //once data is available, show
-        imshow("sobel filter", frame);
+        imshow("sobel filter", *frame);
         waitKey(displayTime);
         qdframes--;
         frameNum++;
+
+        free(frame);
 
         //check if done
         if (isEmpty && (qdframes == 0))
