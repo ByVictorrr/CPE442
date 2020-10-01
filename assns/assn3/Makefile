@@ -15,11 +15,11 @@ all: $(BINARY)
 sobel: $(HEADERS) $(SOURCES) $(OBJS)
 	$(CC) sobel.cpp -o $@ $(OBJS) $(CFLAGS) $(LDFLAGS)
 
-sobel3b3: $(HEADERS) $(OBJS)
-	$(CC) sobel3b3.cpp -o $@ $(OBJS) $(CFLAGS) $(LDFLAGS)
+sobelref: $(HEADERS) $(OBJS)
+	$(CC) sobelref.cpp -o $@ $(OBJS) $(CFLAGS) $(LDFLAGS)
 
 #$(BINARY): $(HEADERS) $(SOURCES) $(OBJS)
 #	$(CC) $(BINARY).cpp -o $@ $(CFLAGS) $(LDFLAGS)
 
 clean:
-	rm -f sobel sobel3b3 $(OBJS) $(BINARY:=.o) 
+	rm -f sobel sobelref $(OBJS) $(BINARY:=.o) 
