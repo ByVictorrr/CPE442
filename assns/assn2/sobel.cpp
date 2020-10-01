@@ -8,111 +8,110 @@ using namespace cv;
 using namespace std;
 
 enum VEC3B_COLORS {BLUE, GREEN, RED};
-struct gradient{
-    vector <vector<int>> x;
-    vector <vector<int>> y;
-    int rows;
-    int cols;
+
+struct sobel_weight{
+    vector<vector<int>> w_x;
+    vector<vector<int>> w_y;
 };
 
-Vec3b ITU_R(uchar R, uchar G, uchar B){
-    return Vec3b((uchar)(.0722*B),(uchar)(.7152*G),(uchar)(.2126*R));
+uchar ITU_R(uchar R, uchar G, uchar B){
+    return .0722*B+.7152*G+.2126*R;
 }
 
-Mat gray_scal(Vec3b (*gray_alg)(uint8_t, uint8_t, uint8_t), Mat &img)
+void gray_scal(uchar (*gray_alg)(uchar,uchar,uchar),Mat &img, Mat &gray)
 {
-    Mat gray(img.rows, img.cols, img.type());
-    for(int row=0; row < img.rows; row++)
-        for(int col=0; col < img.cols; col++){
-            // Step 1 - get pixel
-            Vec3b & color = img.at<Vec3b>(col, row);
-            // Step 2 - change the color
-            gray.at<Vec3b>(row,col) = gray_alg(color[RED], color[GREEN], color[BLUE]);
-    }
-    return gray;
-}
-// Needs at least 3x3 window size
-Mat get_windowSize(const struct gradient *G, int col, int row,Mat &img){
-    if(G->cols < 3  && G->rows < 3)
-        exit(EXIT_FAILURE);
+    int rows = img.rows;
+    int cols = img.cols;
 
-    int startX = abs(col-(G->cols-2));
-    int startY = abs(row-(G->rows-2));
-    Mat small; 
-    img(Rect(startX, startY, G->cols, G->rows)).copyTo(small);
-    return small;
+    gray.create(img.size(), CV_8UC1);
+
+    for (int row = 0; row < rows; row++)
+    {
+      for (int col = 0; col < cols; col++)
+      {
+          Vec3b &channels = img.at<Vec3b>(row, col);
+          gray.at<uchar>(row, col) = gray_alg(channels[RED], channels[GREEN], channels[BLUE]);
+
+      }
+    }
 }
-int window_product(Mat &winImg, const struct gradient *G){
-    int productX=0;
-    int productY=0;
-    for(int row=0; row < winImg.rows; row++){
-        for(int col=0; col < winImg.cols; col++){
-            productX+=G->x[row][col]*winImg.at<uchar>(row, col);
-            productY+=G->y[row][col]*winImg.at<uchar>(row, col);
+
+uchar window_product(Mat &gray, const struct sobel_weight *W, int startX, int startY){
+    int W_rows =  W->w_x.size();
+    int W_cols =  W->w_x[0].size();
+    int product = 0;
+    for(int row=startY; row < startY+W_rows; row++){
+        for(int col=startX; col < startX+W_cols; col++){
+            product += W->w_x[row-startY][col-startX]*gray.at<uchar>(col, row);
+            product += W->w_y[row-startY][col-startX]*gray.at<uchar>(col, row);
         }
     }
-    return sqrt(productX*productX+productY*productY);
+    if(product > 255){
+        return 255;
+    }else if(product < 0){
+        return 0;
+    }
+    return product; 
 }
+void sobel_filter(const struct sobel_weight *W, Mat &gray, Mat & sobel){
+    int rows = gray.rows;
+    int cols = gray.cols;
+    int W_rows =  W->w_x.size();
+    int W_cols =  W->w_x[0].size();
+    sobel.create(gray.size(), gray.type());
 
-Mat sobel_filter(const struct gradient *G, Mat &grayImg){
-    int rows = grayImg.rows;
-    int cols = grayImg.cols;
-    Mat sobel(rows, cols, grayImg.type());
     for(int row=0; row < rows; row++)
         for(int col=0; col < cols; col++){
-            // if on first col or first row dont use the filter
-            // or if row is on the last
-            if((row == 0 || col == 0) || (row == rows-1 || col == cols-1) ){
+            // For each pixel
+            int startRow = row - (int)(W_rows/2);
+            int startCol = col - (int)(W_cols/2);
+            // Check if the window taken from gray is on the Mat
+            if(startRow < 0 || startCol < 0 || startRow+W_rows-1 > rows  || startCol+W_cols-1 > cols)
                 continue;
-            }else{
-                // Step 1 - get pixels
-                Mat window = get_windowSize(G, col, row, grayImg);
-                // Step 2 - get the |G| = productX+productY
-                sobel.at<uchar>(row, col) = window_product(window, G);
-                
-            }
-         }
-
-    return sobel;
+            sobel.at<uchar>(row,col) = window_product(gray, W, startRow, startCol);
+        }
 }
+
 int main(int argc, char *argv[]){
-    VideoCapture vc;
+    VideoCapture inputVideo;
     Mat img, gray, sobel;
-    struct gradient G;
 
-    G.x = {{-1, 0, 1},{-2,0,2},{-1,0,1}};
-    G.y = {{1, 2, 1},{0,0,0},{-1,-2,-1}};
-    G.rows = G.x.size();
-    G.cols = G.x[0].size();
+    const struct sobel_weight WEIGHTS = {
+               {
+                   {1, 0, -1},
+                   {2, 0, -2},
+                   {1, 0, -1}
+               },
+               {
+                   {1, 2, 1},
+                   {0, 0, 0},
+                   {-1,-2,-1}
+               }
+    };
 
-    
+
 
     if(argc !=2 ){
         cerr << "sobel <vide_file> " << endl; 
         exit(EXIT_FAILURE);
     }
 
-    //img = imread(argv[1], IMREAD_COLOR);
-
-    if(!vc.open(argv[1])){
+    if(!inputVideo.open(argv[1])){
         cerr << "Not able to open " << argv[1] << endl;
         exit(EXIT_FAILURE);
     }
 
-
+   
     while(1){
-        vc >> img;
+        inputVideo >> img;
         if(img.empty())
             break;
 
        // Step 1 - get gray mat
-       //gray = gray_scal(ITU_R, img);
-        cvtColor(img, gray, COLOR_BGR2GRAY);
-
+       gray_scal(ITU_R, img, gray);
        // Step 2 - get sober filter
-       sobel = sobel_filter(&G, gray);
-
-       imshow("w", sobel);
+       sobel_filter(&WEIGHTS, gray, sobel);
+       imshow("sobel filter", sobel);
        waitKey(20); // wait 20s to display frame
     }
 
