@@ -16,13 +16,6 @@ enum VEC3B_COLORS
     RED
 };
 
-enum EVENT_FLAGS
-{
-    WAITING,
-    READY,
-    DONE
-};
-
 #define FRAMEBUFSIZE 3 /* On Pi 4, buffer 3 frames, 4th is reserved for UI thread */
 #define SOBEL_ROWS 3
 #define SOBEL_COLS 3
@@ -43,7 +36,7 @@ uchar ITU_R(uchar R, uchar G, uchar B)
     return .0722 * B + .7152 * G + .2126 * R;
 }
 
-void gray_scal(uchar (*gray_alg)(uchar, uchar, uchar), Mat *img, Mat *gray)
+void gray_scale(uchar (*gray_alg)(uchar, uchar, uchar), Mat *img, Mat *gray)
 {
     int rows = img->rows;
     int cols = img->cols;
@@ -61,9 +54,9 @@ void gray_scal(uchar (*gray_alg)(uchar, uchar, uchar), Mat *img, Mat *gray)
 uchar window_product(Mat *gray, const struct sobel_weight *W, int startX, int startY)
 {
     int product = 0;
-    for (int row = startY; row < startY + 3; row++)
+    for (int row = startY; row < startY + SOBEL_ROWS; row++)
     {
-        for (int col = startX; col < startX + 3; col++)
+        for (int col = startX; col < startX + SOBEL_COLS; col++)
         {
             product += W->x[row - startY][col - startX] * gray->at<uchar>(col, row);
             product += W->y[row - startY][col - startX] * gray->at<uchar>(col, row);
@@ -94,11 +87,11 @@ void *t_cvt_sobel(void *data)
 {
     Mat *img = (Mat *)data;
     Mat *gray = new Mat(img->size(), CV_8UC1);
-    Mat *sobel = new Mat(img->size(), img->type());
+    Mat *sobel = new Mat(img->size(), CV_8UC1);
     sobel_weight sw;
 
     // Step 1 - get gray mat
-    gray_scal(ITU_R, img, gray);
+    gray_scale(ITU_R, img, gray);
     // Step 2 - apply sobel filter
     sobel_filter(&sw, gray, sobel);
 
