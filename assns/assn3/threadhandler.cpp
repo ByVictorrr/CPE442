@@ -52,7 +52,7 @@ int ThreadHandler::create(size_t id, void *data_in, t_func func)
     if (t_i >= this->t_count)
         t_i = id % this->t_count;
 
-    if (this->t_args[t_i].init != 0)
+    if (this->t_args[t_i].init == INIT_SEQ_CHECK)
         return -1;
 
     this->t_args[t_i].init = INIT_SEQ_CHECK;
