@@ -1,9 +1,8 @@
 # Assignment 1 - Template Makefile
 SHELL := /bin/bash
 CC = g++
-LDFLAGS = 
-CFLAGS =  -g `pkg-config --cflags --libs opencv4` -pthread
-# need a way to input all c files and headers
+LDFLAGS = `pkg-config --cflags --libs opencv4` -pthread
+CFLAGS =  -g # need a way to input all c files and headers
 C_FILES = $(shell find . -name "*.cpp")
 BINARY = sobel
 OBJS = $(C_FILES:.cpp=.o)
@@ -19,7 +18,7 @@ all: .depend $(BINARY)
 include .depend
 
 %.o: %.cpp
-	$(CC) $(CFLAGS) -c -o $@ $^
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BINARY): $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@ 

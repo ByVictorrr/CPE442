@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include "opencv2/highgui.hpp"
 #include "opencv2/opencv.hpp"
+#include "ThreadHandler.hpp"
 using namespace cv;
 using namespace std;
 
@@ -53,8 +54,8 @@ int main(int argc, char *argv[]){
     VideoCapture inputVideo;
     Mat sobel;
     struct thread_sob_fil_parm parms[NUM_THREADS];
-    pthread_t tid[NUM_THREADS];
     Mat imgs[NUM_THREADS];
+    ThreadHandler threads(NUM_THREADS);
    
     int runningThreads = 4;
 
@@ -87,26 +88,24 @@ int main(int argc, char *argv[]){
     while(runningThreads == NUM_THREADS){
 
         // Step 1 - go through threads and assign each one
-        for(int i = 0; i < NUM_THREADS; i++){
-            parms[i].gray_alg = ITU_R;
-            parms[i].W = &WEIGHTS;
-            parms[i].sobel = new Mat;
-            inputVideo >> imgs[i];
-            parms[i].img = &imgs[i];
-            runningThreads = i+1;
-            if(parms[i].img->empty())
+        for(size_t id = 0; id < NUM_THREADS; id++){
+            parms[id].gray_alg = ITU_R;
+            parms[id].W = &WEIGHTS;
+            parms[id].sobel = new Mat;
+            inputVideo >> imgs[id];
+            parms[id].img = &imgs[id];
+            runningThreads = id+1;
+            if(parms[id].img->empty())
                 break;
-            
-            pthread_create(&tid[i], NULL, sobel_filter, &parms[i]);
+            threads.create(id, sobel_filter, &parms[id]);
         }
-        for(int i = 0; i < NUM_THREADS; i++){
-            pthread_join(tid[i], NULL);
-        }
-        for(int i = 0; i < runningThreads; i++){
-            if(!parms[i].sobel->empty()){
-                imshow("sobel filter", *(parms[i].sobel));
-                waitKey(1); // wait 20s to display frame
-                delete parms[i].sobel;
+        threads.joinAll();
+
+        for(int id = 0; id < runningThreads; id++){
+            if(!parms[id].sobel->empty()){
+                imshow("sobel filter", *(parms[id].sobel));
+                waitKey(20); // wait 20s to display frame
+                delete parms[id].sobel;
             }
         }
 
