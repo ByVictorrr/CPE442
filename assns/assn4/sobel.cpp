@@ -13,8 +13,19 @@ enum VEC3B_COLORS {BLUE, GREEN, RED};
 #define SOBEL_COLS 3
 
 struct sobel_weight{
-    vector<vector<int8_t>> w_x;
-    vector<vector<int8_t>> w_y;
+    int rows=SOBEL_ROWS;
+    int cols=SOBEL_COLS;
+    int8_t w_x[SOBEL_ROWS][SOBEL_COLS] = {
+                   {1, 0, -1},
+                   {2, 0, -2},
+                   {1, 0, -1}
+               };
+
+    int8_t w_y[SOBEL_ROWS][SOBEL_COLS] = {
+                   {1, 2, 1},
+                   {0, 0, 0},
+                   {-1,-2,-1}
+               };
 };
 uchar ITU_R(uchar R, uchar G, uchar B)
 {
@@ -31,34 +42,47 @@ void gray_scale(uchar (*gray_alg)(uchar, uchar, uchar), Mat *img, Mat *gray)
         for (int col = 0; col < cols; col++)
         {
             Vec3b &channels = img->at<Vec3b>(row, col);
+            //img->ptr<Vec3b>(row, col)->mul({.0772, .7152, .2126});
+
             gray->at<uchar>(row, col) = gray_alg(channels[RED], channels[GREEN], channels[BLUE]);
         }
     }
 }
 
-/*
-uchar window_product(Mat *gray, const struct sobel_weight *W, int startX, int startY)
+uchar window_product(Mat *gray, const struct sobel_weight *W)
 {
     int productX = 0, productY=0, product=0;
-    int W_rows =  W->w_x.size();
-    int W_cols =  W->w_x[0].size(); 
-    int16x8_t results_x, results_y;
-    int8x8_t gray_v, x, y;
-    // Maybe do three at a time [r1|r2|r3|null]
-    for (int row = startY; row < startY + W_rows; row++)
-    {
-        const uchar *gray_row = gray->ptr<uchar>(row)+startX;
-        const int8_t * wx_row = &(W->w_x[row-startY][0]);
-        const int8_t * wy_row = &(W->w_y[row-startY][0]);
-        for (int col = startX; col < startX + W_cols; col++)
-        {
-            uchar pixel = gray->at<uchar>(row, col);
-            productX = pixel * W->w_x[row-startY][col-startX];
-            productY = pixel * W->w_y[row-startY][col-startX];
-            product+=productX+productY;
+    int W_rows =  W->rows;
+    int W_cols =  W->cols;
+    int8x16_t results_x, results_y, gray_v, x, y;
 
-        }
+    const uchar *gray_row = gray->ptr<uchar>(0);
+    const int8_t * wx_row = W->w_x[0];
+    const int8_t * wy_row = W->w_y[0];
+    // Step 1 - Load the parms 
+    x=vld1q_s8((const int8_t *)wx_row);
+    y=vld1q_s8((const int8_t *)wy_row);
+    gray_v=vld1q_s8((const int8_t *)gray_row);
+
+    // Step 2 - vector multiply 
+    results_x = vmulq_s8(x, gray_v);
+    results_y = vmulq_s8(y, gray_v);
+    for(int i=0; i < W_rows*W_cols; i++){
+        productX+=vget_lane_s8(results_x, i);
+        productY+=vget_lane_s8(results_y, i);
+        /*
+    productX= vgetq_lane_s8(results_x, 0) + vgetq_lane_s8(results_x, 1) + vgetq_lane_s8(results_x, 2) + vgetq_lane_s8(results_x, 3)
+             +vgetq_lane_s8(results_x, 4) + vgetq_lane_s8(results_x, 5) + vgetq_lane_s8(results_x, 6) + vgetq_lane_s8(results_x, 7)
+             +vgetq_lane_s8(results_x, 8) ;
+
+    productY= vgetq_lane_s8(results_y, 0) + vgetq_lane_s8(results_y, 1) + vgetq_lane_s8(results_y, 2) + vgetq_lane_s8(results_y, 3)
+             +vgetq_lane_s8(results_y, 4) + vgetq_lane_s8(results_y, 5) + vgetq_lane_s8(results_y, 6) + vgetq_lane_s8(results_y, 7)
+             +vgetq_lane_s8(results_y, 8) ;
+             */
     }
+
+    product+=productX+productY;
+
     if (product > 255)
     {
         return 255;
@@ -68,52 +92,17 @@ uchar window_product(Mat *gray, const struct sobel_weight *W, int startX, int st
         return 0;
     }
     return product;
-
 }
-*/
-uchar window_product(Mat *gray, const struct sobel_weight *W, int startX, int startY)
+Mat getWindow(Mat &img, int startCol, int startRow, int cols, int rows)
 {
-    int productX = 0, productY=0, product=0;
-    int W_rows =  W->w_x.size();
-    int W_cols =  W->w_x[0].size(); 
-    int16x8_t results_x, results_y;
-    int8x8_t gray_v, x, y;
-    // Maybe do three at a time [r1|r2|r3|null]
-    for (int row = startY; row < startY + W_rows; row++)
-    {
-        const uchar *gray_row = gray->ptr<uchar>(row)+startX;
-        const int8_t * wx_row = &(W->w_x[row-startY][0]);
-        const int8_t * wy_row = &(W->w_y[row-startY][0]);
-        for (int col = startX; col < startX + W_cols; col+=W_cols)
-        {
-            // Step 1 - Load the parms 
-            x=vld1_s8((const int8_t *)wx_row);
-            y=vld1_s8((const int8_t *)wy_row);
-            gray_v=vld1_s8((const int8_t *)gray_row);
-
-            // Step 2 - vector multiply 
-            results_x = vmull_s8(x, gray_v);
-            results_y = vmull_s8(y, gray_v);
-            productX= vgetq_lane_s16(results_x, 0) + vgetq_lane_s16(results_x, 1) + vgetq_lane_s16(results_x, 2);
-            productY= vgetq_lane_s16(results_y, 0) + vgetq_lane_s16(results_y, 1) + vgetq_lane_s16(results_y, 2);
-            product+=productX+productY;
-
-        }
-    }
-    if (product > 255)
-    {
-        return 255;
-    }
-    else if (product < 0)
-    {
-        return 0;
-    }
-    return product;
+    Rect window(startCol, startRow, cols, rows);
+    Mat grayWin = img(window);
+    return grayWin;
 }
 void sobel_filter(const struct sobel_weight *W, Mat *gray, Mat *sobel){
     int rows = gray->rows;
-    int W_rows = W->w_x.size();
-    int W_cols = W->w_x[0].size();
+    int W_rows = W->rows;
+    int W_cols = W->cols;
     int cols = gray->cols;
 
     for(int row=0; row < rows; row++)
@@ -121,13 +110,11 @@ void sobel_filter(const struct sobel_weight *W, Mat *gray, Mat *sobel){
             // For each pixel
             int startRow = row - (int)(W_rows/2);
             int startCol = col - (int)(W_cols/2);
-            Mat grayWin(*gray, Rect(0, 0, gray->cols, gray->rows));
-            gray->copyTo(grayWin);
-
-            // Check if the window taken from gray is on the Mat
             if(startRow < 0 || startCol < 0 || startRow+W_rows-1 >= rows  || startCol+W_cols-1 >= cols)
                 continue;
-            sobel->at<uchar>(row,col) = window_product(&grayWin, W, startCol, startRow);
+
+            Mat &&grayWin = getWindow(*gray, startCol, startRow, SOBEL_COLS, SOBEL_ROWS);
+            sobel->at<uchar>(row,col) = window_product(&grayWin, W);
         }
 }
 void *t_cvt_sobel(void *data)
@@ -135,18 +122,7 @@ void *t_cvt_sobel(void *data)
     Mat *img = (Mat *)data;
     Mat *gray = new Mat(img->size(), CV_8UC1);
     Mat *sobel = new Mat(img->size(), CV_8UC1);
-    const struct sobel_weight WEIGHTS = {
-               {
-                   {1, 0, -1},
-                   {2, 0, -2},
-                   {1, 0, -1}
-               },
-               {
-                   {1, 2, 1},
-                   {0, 0, 0},
-                   {-1,-2,-1}
-               }
-    };
+    const struct sobel_weight WEIGHTS;
 
 
     // Step 1 - get gray mat
@@ -172,10 +148,9 @@ int main(int argc, char *argv[])
     // use -i cmdline flag for single frame
     if (argc == 3)
     {
-        if (argv[2][0] == '-')
+        if (argv[2][0] == '-' && argv[2][1] == 'i')
         {
-            if (argv[2][1] == 'i')
-                displayTime = 0;
+            displayTime = 0;
         }
     }
 
