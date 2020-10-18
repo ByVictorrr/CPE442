@@ -34,18 +34,36 @@ uchar ITU_R(uchar R, uchar G, uchar B)
 
 void gray_scale(uchar (*gray_alg)(uchar, uchar, uchar), Mat *img, Mat *gray)
 {
+    CV_Assert(img->type() == CV_8UC3);
     int rows = img->rows;
     int cols = img->cols;
 
-    for (int row = 0; row < rows; row++)
-    {
-        for (int col = 0; col < cols; col++)
-        {
-            Vec3b &channels = img->at<Vec3b>(row, col);
-            //img->ptr<Vec3b>(row, col)->mul({.0772, .7152, .2126});
+    if(!img->isContinuous() || !gray->isContinuous()){
+        return;
+    }
 
-            gray->at<uchar>(row, col) = gray_alg(channels[RED], channels[GREEN], channels[BLUE]);
-        }
+    const uint8_t gray_weights[16] = {7, 72, 21, 7, 72, 21, 7, 72, 21, 7, 72, 21, 7, 72, 21, 0}; // shift back 4
+    uint8x16_t scales = vld1q_u8(gray_weights);
+
+    uint8_t *_img = img->ptr<uchar>(0);
+    uint8_t *_gray = gray->ptr<uchar>(0);
+
+    long long group_pixels = (rows*cols);
+    for (long long pixel = 0; pixel < group_pixels; pixel+=5)
+    {
+        uint16x8_t temp;
+        uint16_t result;
+        uint8x16_t rgb = vld1q_u8(_img);
+        temp = vmulq_u8(rgb, scales);
+
+        _img  += 15;
+
+        _gray[pixel] = (vgetq_lane_u8(temp, 0) + vgetq_lane_u8(temp, 1) + vgetq_lane_u8(temp, 2))/100 ;
+        _gray[pixel+1] = (vgetq_lane_u8(temp, 3) + vgetq_lane_u8(temp, 4) + vgetq_lane_u8(temp, 5))/100 ;
+        _gray[pixel+2] = (vgetq_lane_u8(temp, 6) + vgetq_lane_u8(temp, 7) + vgetq_lane_u8(temp, 8))/100 ;
+        _gray[pixel+3] = (vgetq_lane_u8(temp, 9) + vgetq_lane_u8(temp, 10) + vgetq_lane_u8(temp, 11))/100 ;
+        _gray[pixel+4] = (vgetq_lane_u8(temp, 12) + vgetq_lane_u8(temp, 13) + vgetq_lane_u8(temp, 14))/100 ;
+
     }
 }
 
@@ -67,10 +85,6 @@ uchar window_product(Mat *gray, const struct sobel_weight *W)
     // Step 2 - vector multiply 
     results_x = vmulq_s8(x, gray_v);
     results_y = vmulq_s8(y, gray_v);
-    for(int i=0; i < W_rows*W_cols; i++){
-        productX+=vget_lane_s8(results_x, i);
-        productY+=vget_lane_s8(results_y, i);
-        /*
     productX= vgetq_lane_s8(results_x, 0) + vgetq_lane_s8(results_x, 1) + vgetq_lane_s8(results_x, 2) + vgetq_lane_s8(results_x, 3)
              +vgetq_lane_s8(results_x, 4) + vgetq_lane_s8(results_x, 5) + vgetq_lane_s8(results_x, 6) + vgetq_lane_s8(results_x, 7)
              +vgetq_lane_s8(results_x, 8) ;
@@ -78,8 +92,6 @@ uchar window_product(Mat *gray, const struct sobel_weight *W)
     productY= vgetq_lane_s8(results_y, 0) + vgetq_lane_s8(results_y, 1) + vgetq_lane_s8(results_y, 2) + vgetq_lane_s8(results_y, 3)
              +vgetq_lane_s8(results_y, 4) + vgetq_lane_s8(results_y, 5) + vgetq_lane_s8(results_y, 6) + vgetq_lane_s8(results_y, 7)
              +vgetq_lane_s8(results_y, 8) ;
-             */
-    }
 
     product+=productX+productY;
 
@@ -130,9 +142,9 @@ void *t_cvt_sobel(void *data)
     // Step 2 - apply sobel filter
     sobel_filter(&WEIGHTS, gray, sobel);
 
-    free(gray);
+    //free(gray);
     free(data);
-    return (void *)sobel;
+    return (void *)gray;
 }
 int main(int argc, char *argv[])
 {
