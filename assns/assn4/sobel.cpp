@@ -27,12 +27,8 @@ struct sobel_weight{
                    {-1,-2,-1}
                };
 };
-uchar ITU_R(uchar R, uchar G, uchar B)
-{
-    return .0722 * B + .7152 * G + .2126 * R;
-}
 
-void gray_scale(uchar (*gray_alg)(uchar, uchar, uchar), Mat *img, Mat *gray)
+void gray_scale(const uint8_t *gray_weights, Mat *img, Mat *gray)
 {
     CV_Assert(img->type() == CV_8UC3);
     int rows = img->rows;
@@ -41,30 +37,28 @@ void gray_scale(uchar (*gray_alg)(uchar, uchar, uchar), Mat *img, Mat *gray)
     if(!img->isContinuous() || !gray->isContinuous()){
         return;
     }
-
-    const uint8_t gray_weights[16] = {7, 72, 21, 7, 72, 21, 7, 72, 21, 7, 72, 21, 7, 72, 21, 0}; // shift back 4
-    uint8x16_t scales = vld1q_u8(gray_weights);
-
+    uint8x8_t scales = vld1_u8(gray_weights);
     uint8_t *_img = img->ptr<uchar>(0);
     uint8_t *_gray = gray->ptr<uchar>(0);
-
+    uint16x8_t temp;
+    uint8x8_t rgb;
     long long group_pixels = (rows*cols);
-    for (long long pixel = 0; pixel < group_pixels; pixel+=5)
+    for (long long pixel = 0; pixel < (group_pixels&~0x2); pixel+=2)
     {
-        uint16x8_t temp;
-        uint16_t result;
-        uint8x16_t rgb = vld1q_u8(_img);
-        temp = vmulq_u8(rgb, scales);
-
-        _img  += 15;
-
-        _gray[pixel] = (vgetq_lane_u8(temp, 0) + vgetq_lane_u8(temp, 1) + vgetq_lane_u8(temp, 2))/100 ;
-        _gray[pixel+1] = (vgetq_lane_u8(temp, 3) + vgetq_lane_u8(temp, 4) + vgetq_lane_u8(temp, 5))/100 ;
-        _gray[pixel+2] = (vgetq_lane_u8(temp, 6) + vgetq_lane_u8(temp, 7) + vgetq_lane_u8(temp, 8))/100 ;
-        _gray[pixel+3] = (vgetq_lane_u8(temp, 9) + vgetq_lane_u8(temp, 10) + vgetq_lane_u8(temp, 11))/100 ;
-        _gray[pixel+4] = (vgetq_lane_u8(temp, 12) + vgetq_lane_u8(temp, 13) + vgetq_lane_u8(temp, 14))/100 ;
+        rgb = vld1_u8(&_img[pixel*3]);
+        temp = vmull_u8(rgb, scales);
+        _gray[pixel] = (vgetq_lane_u16(temp, 0) + vgetq_lane_u16(temp, 1) + vgetq_lane_u16(temp, 2))/100 ;
+        _gray[pixel+1] = (vgetq_lane_u16(temp, 3) + vgetq_lane_u16(temp, 4) + vgetq_lane_u16(temp, 5))/100 ;
 
     }
+
+    // cleanup
+    for (long long pixel = (group_pixels&~0x2); pixel < group_pixels; pixel++){
+        rgb = vld1_u8(&_img[pixel*3]);
+        temp = vmull_u8(rgb, scales);
+        _gray[pixel] = (vgetq_lane_u16(temp, 0) + vgetq_lane_u16(temp, 1) + vgetq_lane_u16(temp, 2))/100 ;
+    }
+
 }
 
 uchar window_product(Mat *gray, const struct sobel_weight *W)
@@ -134,17 +128,19 @@ void *t_cvt_sobel(void *data)
     Mat *img = (Mat *)data;
     Mat *gray = new Mat(img->size(), CV_8UC1);
     Mat *sobel = new Mat(img->size(), CV_8UC1);
-    const struct sobel_weight WEIGHTS;
-
-
+    const struct sobel_weight SOBEL_WEIGHTS;
+    const uint8_t GRAY_WEIGHTS[8] = {
+                                    (uint8_t)(.0722*100), (uint8_t)(.7152*100), (uint8_t)(.2126*100), 
+                                    (uint8_t)(.0722*100), (uint8_t)(.7152*100), (uint8_t)(.2126*100)
+                                    };
     // Step 1 - get gray mat
-    gray_scale(ITU_R, img, gray);
+    gray_scale(GRAY_WEIGHTS, img, gray);
     // Step 2 - apply sobel filter
-    sobel_filter(&WEIGHTS, gray, sobel);
+    sobel_filter(&SOBEL_WEIGHTS, gray, sobel);
 
-    //free(gray);
+    free(gray);
     free(data);
-    return (void *)gray;
+    return (void *)sobel;
 }
 int main(int argc, char *argv[])
 {
