@@ -1,0 +1,2 @@
+sobel.o: sobel.cpp threadhandler.h
+threadhandler.o: threadhandler.cpp threadhandler.h
