@@ -68,20 +68,23 @@ cv::Mat grayScale(cv::Mat &regular, cl_context context, cl_command_queue queue)
 
     // read back the result
     err = clEnqueueReadBuffer(queue, grayIMG, CL_TRUE, 0, (size_t)regular.rows*regular.cols, (void*)gray.ptr<uchar>(0), 0, NULL, NULL);
+    clReleaseKernel(kernel);
     return gray;
 }
 
 cv::Mat sobel(cv::Mat &regular, cl_context context, cl_command_queue queue){
+
     cv::Mat gray = grayScale(regular, context, queue);
+    cv::Mat sobel;
+    sobel.create(regular.size(), CV_8UC1);
     std::string sourceWP = readKernel("window_product.cl");
     const char *_sourceWP = sourceWP.c_str();
-    size_t globalThreads[2]= {regular.rows,regular.cols}
+    size_t globalThreads[2]= {regular.rows,regular.cols};
     cl_program program;
     cl_kernel kernel; 
     cl_int err;
 
-    cl_mem grayMEM;
-    cl_mem sobelMEM;
+    cl_mem grayIMG, sobelIMG;
     const cl_image_format format = {
         .image_channel_order=CL_R, 
         .image_channel_data_type=CL_UNSIGNED_INT8
@@ -104,21 +107,22 @@ cv::Mat sobel(cv::Mat &regular, cl_context context, cl_command_queue queue){
     kernel = clCreateKernel(program, "window_product", &err);
 
     // create images
-    grayMEM = clCreateImage(context, CL_MEM_READ_ONLY, &format, &desc, NULL, &err);
-    sobelMEM = clCreateImage(context, CL_MEM_WRITE_ONLY, &format, &desc, NULL, &err);
+    grayIMG = clCreateImage(context, CL_MEM_READ_ONLY, &format, &desc, NULL, &err);
+    sobelIMG = clCreateImage(context, CL_MEM_WRITE_ONLY, &format, &desc, NULL, &err);
     // fill images
     const size_t origin[3] = {0, 0, 0};
     const size_t region[3] = {1, 1, 1};
-    err = clEnqueueWriteImage(queue, grayMEM, CL_TRUE, origin, region, 1, 0, gray.data, 0, NULL, NULL);
+    err = clEnqueueWriteImage(queue, grayIMG, CL_TRUE, origin, region, 1, 0, gray.data, 0, NULL, NULL);
     // set kernel parms
     err = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&grayIMG);
     err = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&sobelIMG);
     err = clSetKernelArg(kernel, 2, sizeof(int), (void*)&regular.rows);
     err = clSetKernelArg(kernel, 3, sizeof(int), (void*)&regular.cols);
-    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, &globalThreads, NULL, 0, NULL, NULL);
+    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, globalThreads, NULL, 0, NULL, NULL);
     err = clFinish(queue);
     std::cout << "sobel finished" << std::endl;
-    err = clEnqueueReadBuffer(queue, sobelMEM, CL_TRUE, orgin, region, 1, 0, (void*)sobel.ptr<uchar>(0), 0, NULL, NULL);
+    err = clEnqueueReadImage(queue, sobelIMG, CL_TRUE, origin, region, 1, 0, (void*)sobel.ptr<uchar>(0), 0, NULL, NULL);
+    clReleaseKernel(kernel);
 
     return sobel;
 
@@ -155,15 +159,13 @@ int main(int argc, char **argv){
             std::cout << "last frame" << std::endl;
             break;
         }
-        cv::Mat gray = grayScale(img, ker, queue);
+        cv::Mat gray = grayScale(img, context, queue);
         cv::imshow("gray", gray);
         cv::waitKey(33.36); // 29.97 fps
 
 
     }
 
-    clReleaseKernel(kernel);
-    clReleaseProgram(program);
     clReleaseCommandQueue(queue);
     clReleaseContext(context);
     inputVideo.release();
