@@ -1,9 +1,9 @@
 #include <iostream>
 #include <ostream>
 #include <istream>
-#include "opencv2/highgui.hpp"
-#include "opencv2/opencv.hpp"
-#include "opencv2/core/ocl.hpp"
+#include <opencv2/highgui.hpp>
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/ocl.hpp>
 #include <arm_neon.h>
 
 #include <CL/cl.hpp>
@@ -31,40 +31,20 @@ std::string readKernel(const char *fileName){
     return content;
 }
 
-cv::Mat grayScale(cv::Mat &regular)
+cv::Mat grayScale(cv::Mat &regular, cl_context context, cl_kernel kernel, cl_command_queue queue)
 {
     cv::Mat gray;
+    /*
     std::cout << "size: " << regular.size() << std::endl;
     std::cout << "cols: " << regular.cols << std::endl;
     std::cout << "rows: " << regular.rows << std::endl;
     std::cout << "rows*cols: " << regular.rows*regular.cols << std::endl;
+    */
     gray.create(regular.size(), CV_8UC1);
-    size_t szParmDataBytes; // for number of gpus
-    cl_platform_id platform ;
-    cl_context context;
-    cl_device_id device_id;
-    cl_kernel kernel;
-    cl_command_queue queue;
-    cl_mem regularIMG, grayIMG;
-    cl_int err;
-    std::string sourceKernal = readKernel("gray_scale.cl");
-    const char *_sourceKernel = sourceKernal.c_str();
 
     size_t globalThreads= regular.rows * regular.cols;
-    // Create the openCL context on a GPU device
-    err = clGetPlatformIDs(1, &platform, NULL);
-    // Get the list of GPU devices associated with context
-    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
-    context = clCreateContext(0, 1, &device_id, NULL, NULL, &err);
-    // Create a command-queue
-    queue = clCreateCommandQueue (context, device_id, 0, &err);
-
-
-    // Create the program and load the kernel source to it
-    cl_program program = clCreateProgramWithSource(context, 1, &_sourceKernel, NULL, &err);
-    err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
-    kernel = clCreateKernel(program, "gray_scale", &err);
-
+    cl_mem regularIMG, grayIMG;
+    cl_int err;
     // allocate the first buffer (src)
     regularIMG = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(uchar) * regular.cols * regular.rows * 3, NULL, &err);
     grayIMG = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(uchar)* regular.cols * regular.rows, NULL, &err) ;
@@ -80,12 +60,7 @@ cv::Mat grayScale(cv::Mat &regular)
     std::cout << "finished" << std::endl;
 
     // read back the result
-    err = clEnqueueReadBuffer(queue, grayIMG, CL_TRUE, 0, (size_t)regular.rows*regular.cols, (void*)gray.data, 0, NULL, NULL);
-    clReleaseKernel(kernel);
-    clReleaseProgram(program);
-    clReleaseCommandQueue(queue);
-    clReleaseContext(context);
-
+    err = clEnqueueReadBuffer(queue, grayIMG, CL_TRUE, 0, (size_t)regular.rows*regular.cols, (void*)gray.ptr<uchar>(0), 0, NULL, NULL);
     return gray;
 }
 
@@ -97,22 +72,41 @@ int main(int argc, char **argv){
     cv::Mat img;
     inputVideo.open(argv[1]);
 
+    cl_int err;
+    cl_platform_id platform ;
+    cl_context context;
+    cl_device_id device_id;
+    cl_program program;
+    cl_kernel kernel;
+    cl_command_queue queue;
+    std::string sourceGray = readKernel("gray_scale.cl");
+    const char *_sourceGray = sourceGray.c_str();
+    err = clGetPlatformIDs(1, &platform, NULL);
+    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+    context = clCreateContext(0, 1, &device_id, NULL, NULL, &err);
+    queue = clCreateCommandQueue (context, device_id, 0, &err);
+    program = clCreateProgramWithSource(context, 1, &_sourceGray, NULL, &err);
+    err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+    kernel = clCreateKernel(program, "gray_scale", &err);
+
+   
+
     while(1){
         inputVideo >> img;
-        cv::Mat gray = grayScale(img);
-
-        /*
-        for(int i = 0; i<img.rows*img.cols;i++)
-            std::cout << std::to_string(gray.data[i]) << std::endl;
-            */
-
+        cv::Mat gray = grayScale(img, context, kernel, queue);
         cv::imshow("gray", gray);
-        cv::waitKey(3);
+        cv::waitKey(30);
         
         
 
 
     }
+
+    clReleaseKernel(kernel);
+    clReleaseProgram(program);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+
 
    return 0;
 
