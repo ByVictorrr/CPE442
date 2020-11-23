@@ -1,9 +1,9 @@
 # Assignment 1 - Template Makefile
 SHELL=/bin/bash
 CC = /usr/bin/g++-8
-LDFLAGS = -lpthread
+LDFLAGS = #-lpthread
 CFLAGS =  -g -Wall -O0 `pkg-config --cflags --libs opencv` -lOpenCL
-BINARY = sobel_cl
+BINARY = sobel
 C_FILES = $(shell find . -name "*.cpp")
 OBJS = $(C_FILES:.cpp=.o)
 
