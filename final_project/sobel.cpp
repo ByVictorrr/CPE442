@@ -64,7 +64,7 @@ cv::Mat grayScale(cv::Mat &regular, cl_context context, cl_command_queue queue)
     // Enqueue a command to execute a kernel on device
     err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &globalThreads, NULL, 0, NULL, NULL);
     err = clFinish(queue);
-    std::cout << "finished" << std::endl;
+    std::cout << "gray finished" << std::endl;
 
     // read back the result
     err = clEnqueueReadBuffer(queue, grayIMG, CL_TRUE, 0, (size_t)regular.rows*regular.cols, (void*)gray.ptr<uchar>(0), 0, NULL, NULL);
@@ -75,27 +75,28 @@ cv::Mat sobel(cv::Mat &regular, cl_context context, cl_command_queue queue){
     cv::Mat gray = grayScale(regular, context, queue);
     std::string sourceWP = readKernel("window_product.cl");
     const char *_sourceWP = sourceWP.c_str();
-    size_t globalThreads= regular.rows * regular.cols;
+    size_t globalThreads[2]= {regular.rows,regular.cols}
     cl_program program;
     cl_kernel kernel; 
     cl_int err;
 
     cl_mem grayMEM;
+    cl_mem sobelMEM;
     const cl_image_format format = {
         .image_channel_order=CL_R, 
         .image_channel_data_type=CL_UNSIGNED_INT8
     };
-    const cl_image_desc = {
+    const cl_image_desc desc = {
         .image_type=CL_MEM_OBJECT_IMAGE2D,
         .image_width=gray.cols,
         .image_height=gray.rows,
         .image_depth=0, // only for 3d images
         .image_array_size=0, // only if using type CL_MEM_OBJECT_IMAGE<2|1>D_ARRAY
-        .image_row_pitch=,
-        .image_slice_pitch=,
-        .num_mip_levels=,
-        .num_samples=,
-        .buffer=
+        .image_row_pitch=0, // 0 if no host pointer
+        .image_slice_pitch=0, // 0 if no host pointer
+        .num_mip_levels=0, // must be 0
+        .num_samples=0, // must be  0
+        .buffer=NULL
     };
 
     program = clCreateProgramWithSource(context, 1, &_sourceWP, NULL, &err);
@@ -103,12 +104,23 @@ cv::Mat sobel(cv::Mat &regular, cl_context context, cl_command_queue queue){
     kernel = clCreateKernel(program, "window_product", &err);
 
     // create images
-    grayMEM = clCreateImage(context, CL_MEM_READ_ONLY, format, );
+    grayMEM = clCreateImage(context, CL_MEM_READ_ONLY, &format, &desc, NULL, &err);
+    sobelMEM = clCreateImage(context, CL_MEM_WRITE_ONLY, &format, &desc, NULL, &err);
+    // fill images
+    const size_t origin[3] = {0, 0, 0};
+    const size_t region[3] = {1, 1, 1};
+    err = clEnqueueWriteImage(queue, grayMEM, CL_TRUE, origin, region, 1, 0, gray.data, 0, NULL, NULL);
+    // set kernel parms
+    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&grayIMG);
+    err = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&sobelIMG);
+    err = clSetKernelArg(kernel, 2, sizeof(int), (void*)&regular.rows);
+    err = clSetKernelArg(kernel, 3, sizeof(int), (void*)&regular.cols);
+    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, &globalThreads, NULL, 0, NULL, NULL);
+    err = clFinish(queue);
+    std::cout << "sobel finished" << std::endl;
+    err = clEnqueueReadBuffer(queue, sobelMEM, CL_TRUE, orgin, region, 1, 0, (void*)sobel.ptr<uchar>(0), 0, NULL, NULL);
 
-
-
-
-
+    return sobel;
 
 }
 
