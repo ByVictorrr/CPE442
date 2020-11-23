@@ -1,236 +1,119 @@
 #include <iostream>
-#include <inttypes.h> /* for PRIu64 definition */
-#include <pthread.h>
+#include <ostream>
+#include <istream>
 #include "opencv2/highgui.hpp"
 #include "opencv2/opencv.hpp"
-#include "threadhandler.h"
+#include "opencv2/core/ocl.hpp"
 #include <arm_neon.h>
 
-#include <opencl-c.h>
+#include <CL/cl.hpp>
+#include <CL/cl.h>
 
 #include <linux/perf_event.h>
-#include "libperf.h"
 
-using namespace cv;
-using namespace std;
+#define KERNELS "kernels.cl"
 
-#define FRAMEBUFSIZE 3 /* On Pi 4, buffer 3 frames, 4th is reserved for UI thread */
-#define SOBEL_ROWS 3
-#define SOBEL_COLS 3
-
-struct sobel_weight{
-    int rows=SOBEL_ROWS;
-    int cols=SOBEL_COLS;
-    int8_t w_x[SOBEL_ROWS][SOBEL_COLS] = {
-                   {1, 0, -1},
-                   {2, 0, -2},
-                   {1, 0, -1}
-               };
-
-    int8_t w_y[SOBEL_ROWS][SOBEL_COLS] = {
-                   {1, 2, 1},
-                   {0, 0, 0},
-                   {-1,-2,-1}
-               };
+class ArgParser{
+    public:
+        static const char *parse(int argc, char**argv){
+            if (argc != 2)
+            {
+                std::cerr << "sobel <video_file> " << std::endl;
+                exit(EXIT_FAILURE);
+            }
+            return argv[1];
+        }
 };
-
-
-
-void gray_scale(const uint8_t *gray_weights, Mat *img, Mat *gray)
-{
-    CV_Assert(img->type() == CV_8UC3);
-    int rows = img->rows;
-    int cols = img->cols;
-
-    if(!img->isContinuous() || !gray->isContinuous()){
-        return;
-    }
-    uint8x8_t scales = vld1_u8(gray_weights);
-    uint8_t *_img = img->ptr<uchar>(0);
-    uint8_t *_gray = gray->ptr<uchar>(0);
-    uint16x8_t temp;
-    uint8x8_t rgb;
-    long long group_pixels = (rows*cols);
-    for (long long pixel = 0; pixel < (group_pixels&~0x2); pixel+=2)
-    {
-        rgb = vld1_u8(&_img[pixel*3]);
-        temp = vmull_u8(rgb, scales);
-        _gray[pixel] = (vgetq_lane_u16(temp, 0) + vgetq_lane_u16(temp, 1) + vgetq_lane_u16(temp, 2))/100 ;
-        _gray[pixel+1] = (vgetq_lane_u16(temp, 3) + vgetq_lane_u16(temp, 4) + vgetq_lane_u16(temp, 5))/100 ;
-
-    }
-
-    // cleanup
-    for (long long pixel = (group_pixels&~0x2); pixel < group_pixels; pixel++){
-        rgb = vld1_u8(&_img[pixel*3]);
-        temp = vmull_u8(rgb, scales);
-        _gray[pixel] = (vgetq_lane_u16(temp, 0) + vgetq_lane_u16(temp, 1) + vgetq_lane_u16(temp, 2))/100 ;
-    }
-
+std::string readKernel(const char *fileName){
+    std::ifstream file(fileName);
+     std::string content( (std::istreambuf_iterator<char>(file) ),
+                       (std::istreambuf_iterator<char>()    ) );
+    return content;
 }
 
-uchar window_product(Mat *gray, const struct sobel_weight *W)
+cv::Mat grayScale(cv::Mat &regular)
 {
-    int productX = 0, productY=0, product=0;
-    int8x16_t results_x, results_y, gray_v, x, y;
+    cv::Mat gray;
+    std::cout << "size: " << regular.size() << std::endl;
+    std::cout << "cols: " << regular.cols << std::endl;
+    std::cout << "rows: " << regular.rows << std::endl;
+    std::cout << "rows*cols: " << regular.rows*regular.cols << std::endl;
+    gray.create(regular.size(), CV_8UC1);
+    size_t szParmDataBytes; // for number of gpus
+    cl_platform_id platform ;
+    cl_context context;
+    cl_device_id device_id;
+    cl_kernel kernel;
+    cl_command_queue queue;
+    cl_mem regularIMG, grayIMG;
+    cl_int err;
+    std::string sourceKernal = readKernel("gray_scale.cl");
+    const char *_sourceKernel = sourceKernal.c_str();
 
-    const uchar *gray_row = gray->ptr<uchar>(0);
-    const int8_t * wx_row = W->w_x[0];
-    const int8_t * wy_row = W->w_y[0];
-    // Step 1 - Load the parms 
-    x=vld1q_s8((const int8_t *)wx_row);
-    y=vld1q_s8((const int8_t *)wy_row);
-    gray_v=vld1q_s8((const int8_t *)gray_row);
+    size_t globalThreads= regular.rows * regular.cols;
+    // Create the openCL context on a GPU device
+    err = clGetPlatformIDs(1, &platform, NULL);
+    // Get the list of GPU devices associated with context
+    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+    context = clCreateContext(0, 1, &device_id, NULL, NULL, &err);
+    // Create a command-queue
+    queue = clCreateCommandQueue (context, device_id, 0, &err);
 
-    // Step 2 - vector multiply 
-    results_x = vmulq_s8(x, gray_v);
-    results_y = vmulq_s8(y, gray_v);
-    productX = vgetq_lane_s8(results_x, 0) + vgetq_lane_s8(results_x, 1) 
-              +vgetq_lane_s8(results_x, 2) + vgetq_lane_s8(results_x, 3)
-              +vgetq_lane_s8(results_x, 4) + vgetq_lane_s8(results_x, 5) 
-              +vgetq_lane_s8(results_x, 6) + vgetq_lane_s8(results_x, 7)
-              +vgetq_lane_s8(results_x, 8) ;
 
-    productY = vgetq_lane_s8(results_y, 0) + vgetq_lane_s8(results_y, 1) 
-              +vgetq_lane_s8(results_y, 2) + vgetq_lane_s8(results_y, 3)
-              +vgetq_lane_s8(results_y, 4) + vgetq_lane_s8(results_y, 5) 
-              +vgetq_lane_s8(results_y, 6) + vgetq_lane_s8(results_y, 7)
-              +vgetq_lane_s8(results_y, 8) ;
+    // Create the program and load the kernel source to it
+    cl_program program = clCreateProgramWithSource(context, 1, &_sourceKernel, NULL, &err);
+    err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+    kernel = clCreateKernel(program, "gray_scale", &err);
 
-    product+=productX+productY;
+    // allocate the first buffer (src)
+    regularIMG = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(uchar) * regular.cols * regular.rows * 3, NULL, &err);
+    grayIMG = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(uchar)* regular.cols * regular.rows, NULL, &err) ;
+    // Write our data set into the input array in device memory
+    err = clEnqueueWriteBuffer(queue, regularIMG, CL_TRUE, 0, regular.cols*regular.rows*3, regular.data, 0, NULL, NULL);
+     
+    // setting kernel arguments
+    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void*)&regularIMG);
+    err = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&grayIMG);
+    // Enqueue a command to execute a kernel on device
+    err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &globalThreads, NULL, 0, NULL, NULL);
+    err = clFinish(queue);
+    std::cout << "finished" << std::endl;
 
-    if (product > 255)
-    {
-        return 255;
-    }
-    else if (product < 0)
-    {
-        return 0;
-    }
-    return product;
+    // read back the result
+    err = clEnqueueReadBuffer(queue, grayIMG, CL_TRUE, 0, (size_t)regular.rows*regular.cols, (void*)gray.data, 0, NULL, NULL);
+    clReleaseKernel(kernel);
+    clReleaseProgram(program);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+
+    return gray;
 }
-Mat getWindow(Mat &img, int startCol, int startRow, int cols, int rows)
-{
-    Rect window(startCol, startRow, cols, rows);
-    Mat grayWin = img(window);
-    return grayWin;
-}
-void sobel_filter(const struct sobel_weight *W, Mat *gray, Mat *sobel){
-    int rows = gray->rows;
-    int W_rows = W->rows;
-    int W_cols = W->cols;
-    int cols = gray->cols;
 
-    for(int row=0; row < rows; row++)
-        for(int col=0; col < cols; col++){
-            // For each pixel
-            int startRow = row - (int)(W_rows/2);
-            int startCol = col - (int)(W_cols/2);
-            if(startRow < 0 || startCol < 0 || startRow+W_rows-1 >= rows  || startCol+W_cols-1 >= cols)
-                continue;
 
-            Mat &&grayWin = getWindow(*gray, startCol, startRow, SOBEL_COLS, SOBEL_ROWS);
-            sobel->at<uchar>(row,col) = window_product(&grayWin, W);
-        }
-}
-void *t_cvt_sobel(void *data)
-{
-    Mat *img = (Mat *)data;
-    Mat *gray = new Mat(img->size(), CV_8UC1);
-    Mat *sobel = new Mat(img->size(), CV_8UC1);
-    const struct sobel_weight SOBEL_WEIGHTS;
-    const uint8_t GRAY_WEIGHTS[8] = {
-                                    (uint8_t)(.0722*100), (uint8_t)(.7152*100), (uint8_t)(.2126*100), 
-                                    (uint8_t)(.0722*100), (uint8_t)(.7152*100), (uint8_t)(.2126*100)
-                                    };
-    // Step 1 - get gray mat
-    gray_scale(GRAY_WEIGHTS, img, gray);
-    // Step 2 - apply sobel filter
-    sobel_filter(&SOBEL_WEIGHTS, gray, sobel);
 
-    free(gray);
-    free(data);
-    return (void *)sobel;
-}
-int main(int argc, char *argv[])
-{
-    VideoCapture inputVideo;
+int main(int argc, char **argv){
+    //cv::setNumThreads(0);
+    cv::VideoCapture inputVideo;
+    cv::Mat img;
+    inputVideo.open(argv[1]);
 
-    ThreadHandler workers(FRAMEBUFSIZE);
-    double displayTime = 33.36; // in miliseconds (33.36 = 29.97fps, std 30hz video)
-    Mat *frame;
-    size_t frameNum = 0, qdframes = 0;
-    bool isEmpty = false;
+    while(1){
+        inputVideo >> img;
+        cv::Mat gray = grayScale(img);
 
-    void * n = (void*)"hi";
-	int ret = libperf_unit_test(n);
-	struct libperf_data* pd = libperf_initialize(0,1);
-	fprintf(stdout, "ret: %d\n", ret);
-	libperf_finalize(pd,n);
-	return 0;   
+        /*
+        for(int i = 0; i<img.rows*img.cols;i++)
+            std::cout << std::to_string(gray.data[i]) << std::endl;
+            */
 
-    //parse args
-    if (argc < 2)
-    {
-        cerr << "sobel <video_file> " << endl;
-        exit(EXIT_FAILURE);
-    }
-    // use -i cmdline flag for single frame
-    if (argc == 3)
-    {
-        if (argv[2][0] == '-' && argv[2][1] == 'i')
-        {
-            displayTime = 0;
-        }
+        cv::imshow("gray", gray);
+        cv::waitKey(3);
+        
+        
+
+
     }
 
-    //open video for decode
-    if (!inputVideo.open(argv[1]))
-    {
-        cerr << "Not able to open " << argv[1] << endl;
-        exit(EXIT_FAILURE);
-    }
-    while (1)
-    {
-        // add FRAMEBUFSIZE frames to buffer queue
-        while (qdframes < FRAMEBUFSIZE)
-        {
-            Mat *img = new Mat;
-            inputVideo.read(*img);
-            if (img->empty())
-            {
-                isEmpty = true;
-                break;
-            }
+   return 0;
 
-            //make new process thread
-            //with id for circular buffer
-            if (workers.create(frameNum + qdframes, (void *)img, (t_func)t_cvt_sobel) < 0)
-            {
-                perror("thread in use");
-            }
-            qdframes++;
-        }
-
-        get_global_id()
-        //join based on ID
-        if (workers.join(frameNum, (void **)&frame) < 0)
-        {
-            exit(EXIT_FAILURE);
-        }
-
-        //once data is available, show
-        imshow("sobel filter", *frame);
-        waitKey(displayTime); // display frame for N ms 
-        qdframes--;
-        frameNum++;
-
-        free(frame);
-
-        //check if done
-        if (isEmpty && (qdframes == 0))
-            break;
-    }
-
-    return 0;
 }
