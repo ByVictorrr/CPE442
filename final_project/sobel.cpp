@@ -67,11 +67,13 @@ cv::Mat grayScale(cv::Mat &regular, cl_context context, cl_kernel kernel, cl_com
 
 
 int main(int argc, char **argv){
-    //cv::setNumThreads(0);
+    cv::setNumThreads(0);
     cv::VideoCapture inputVideo;
-    cv::Mat img;
-    inputVideo.open(argv[1]);
-
+    char str_buffer[1024];
+    if(!inputVideo.open(argv[1])){
+    	std::cout << "error opening video" << std::endl;
+	    exit(EXIT_FAILURE);
+    }
     cl_int err;
     cl_platform_id platform ;
     cl_context context;
@@ -83,6 +85,8 @@ int main(int argc, char **argv){
     const char *_sourceGray = sourceGray.c_str();
     err = clGetPlatformIDs(1, &platform, NULL);
     err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+    err = clGetDeviceInfo(device_id, CL_DEVICE_NAME, sizeof(str_buffer), &str_buffer, NULL);
+    printf("%s", str_buffer);
     context = clCreateContext(0, 1, &device_id, NULL, NULL, &err);
     queue = clCreateCommandQueue (context, device_id, 0, &err);
     program = clCreateProgramWithSource(context, 1, &_sourceGray, NULL, &err);
@@ -91,12 +95,18 @@ int main(int argc, char **argv){
 
    
 
+    cv::Mat img;
     while(1){
         inputVideo >> img;
+
+        if(img.empty()){
+            std::cout << "last frame" << std::endl;
+            break;
+        }
         cv::Mat gray = grayScale(img, context, kernel, queue);
         cv::imshow("gray", gray);
         cv::waitKey(30);
-        
+
         
 
 
@@ -106,6 +116,8 @@ int main(int argc, char **argv){
     clReleaseProgram(program);
     clReleaseCommandQueue(queue);
     clReleaseContext(context);
+    inputVideo.release();
+    cv::destroyAllWindows();
 
 
    return 0;
