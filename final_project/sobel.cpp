@@ -159,8 +159,8 @@ int main(int argc, char **argv){
             std::cout << "last frame" << std::endl;
             break;
         }
-        cv::Mat gray = grayScale(img, context, queue);
-        cv::imshow("gray", gray);
+        cv::Mat sob = sobel(img, context, queue);
+        cv::imshow("sobel", sob);
         cv::waitKey(33.36); // 29.97 fps
 
 
