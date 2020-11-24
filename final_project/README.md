@@ -10,7 +10,7 @@
 # Timing Table
 |                 | Single | Multithreaded |    GPU    |
 |-----------------|--------|---------------|-----------|
-|seconds per frame|  5.47  |     2.31      |   0.993   |
+|seconds per frame|  2.182  |     ~1.523      |   1.278   |
 
 
 ## Optimizations
