@@ -66,17 +66,22 @@ The Pi 3 has a [VideoCore IV Graphics coproccessor](https://en.wikipedia.org/wik
 [cl_program clCreateProgramWithSource (	cl_context context,cl_uint count,const char **strings,const size_t *lengths,cl_int *errcode_ret)](https://www.khronos.org/registry/OpenCL/sdk/1.0/docs/man/xhtml/clCreateProgramWithSource.html)
 
 ##### Kernels
+A kernel is a function written in OpenCL framework that executable on the computing devices. The number of threads to be spawned is known as a workgroup, and can be broken into several factors:
+    * The global size, which is the total number of work-items
+    * The local size, which is the number of work-items per work-group
+    * The number of work-groups is the global size / local size
+    
+There is no limit on the number of threads that can be spawned. For our application, the kernels launch 1 thread per pixel, with the grayscale only utilizing 1 dimension (total thread count of rows * cols), while the sobel kernel utilizes 2 dimensions for ease of addressing (cols is the number of threads in dimension 1, or x, and rows the number in dimension 2, or y)
 
-* A kernel is a function written in OpenCL framework that executable on the computing devices.
-* You can seperate this function to be run on differnt space 1D,2D,3D.
-    * For Example say I have a 100x100 image
-        * I could seperate run 1 thread for each image
-        * get_global_id(dim): gets the global id of each work-item
-            * dim=0 (x-direction)
-            * dim=1 (y-direction)
-            * dim=2 (z-direction)
-        * Each thread would be assigned a x and y via get_global_id and work on individual pixels
-* Also you use the kernel object to set the parameters for your kernel
+You can seperate this function to be run on different space 1D,2D,3D.
+* For Example, with a 100x100 image
+    * I could seperate run 1 thread for each image
+    * get_global_id(dim): gets the global id of each work-item
+        * dim=0 (x-direction)
+        * dim=1 (y-direction)
+        * dim=2 (z-direction)
+    * Each thread would be assigned a x and y via get_global_id and work on individual pixels. In this example 100000 threads would be spawned, 100 in dimension x, and 100 in dimension y. 
+Also you use the kernel object to set the parameters for your kernel
 
 [cl_kernel clCreateKernel(cl_program program,const char* kernel_name,cl_int* errcode_ret)](https://www.khronos.org/registry/OpenCL/sdk/2.2/docs/man/html/clCreateKernel.html)
 
@@ -89,6 +94,12 @@ The Pi 3 has a [VideoCore IV Graphics coproccessor](https://en.wikipedia.org/wik
 
 `Create Buffer`
 [cl_mem clCreateBuffer (cl_context context,cl_mem_flags flags, size_t size,void *host_ptr,cl_int *errcode_ret)](https://www.khronos.org/registry/OpenCL/sdk/1.0/docs/man/xhtml/clCreateBuffer.html)
+
+Address spaces can be prefixed with scope declarations:
+* `constant` A small portion of cached global memory visible by all workers. Use it if you can, read only.
+* `global` Slow, visible by all, read or write. It is where all your data will end, so some accesses to it are always necessary.
+* `local` Do you need to share something in a local group? Use local! Do all your local workers access the same global memory? Use local! Local memory is only visible inside local workers, and is limited in size, however is very fast.
+* `private` Memory that is only visible to a worker, consider it like registers. All non defined values are private by default.
 
 `Create Image`
 [cl_mem clCreateImage (	cl_context context,cl_mem_flags flags,const cl_image_format *image_format,const cl_image_desc *image_desc,void *host_ptr,cl_int *errcode_ret)](https://www.khronos.org/registry/OpenCL/sdk/1.2/docs/man/xhtml/clCreateImage.html)
