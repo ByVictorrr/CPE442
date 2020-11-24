@@ -10,8 +10,9 @@
 # Timing Table
 |                 | Single | Multithreaded |    GPU    |
 |-----------------|--------|---------------|-----------|
-|seconds per frame|  2.182  |     ~1.523      |   1.278   |
+|average SPF |  2.182  |     1.523      |   1.278   |
 
+Since the standard unit of video (frames per second) is not applicable when dealing with the incredibly under-powered Pi 3, seconds per frame (SPF) was used instead. Time was measured from the import of the Mat object to the display of the filtered image. For the multithreaded program, the average time of all threads was measured and divided by the number of buffered frames. 
 
 ## Optimizations
 This program is an even further improvement upon the last assignment(s), as it impliments GPGPU encoding for the Sobel and Grayscale kernerls. 
