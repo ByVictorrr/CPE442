@@ -21,8 +21,8 @@ window_product(__read_only image2d_t input, __write_only image2d_t output, __glo
 		// l-left, lu-left up, ld-left down
 
 		int4 _mid = read_imageui(input, (int2)(x,y));
-		int _dwn = read_imageui(input, (int2)(x,y+1));
-		int _up = read_imageui(input, (int2)(x,y-1));
+		int4 _dwn = read_imageui(input, (int2)(x,y+1));
+		int4 _up = read_imageui(input, (int2)(x,y-1));
 
 		int4 _l = read_imageui(input, (int2)(x-1,y));
 		int4 _r = read_imageui(input, (int2)(x+1,y));
