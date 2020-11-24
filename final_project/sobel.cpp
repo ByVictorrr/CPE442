@@ -142,7 +142,7 @@ int main(int argc, char **argv)
         err = clFinish(queue);
 
         cv::imshow("sobel", sobel);
-        cv::waitKey(33.36); // 29.97 fps
+        cv::waitKey(1); // 29.97 fps
         //DEBUG cv::waitKey(0);
 
         //q next frame
