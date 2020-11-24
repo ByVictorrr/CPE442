@@ -1,13 +1,11 @@
 # Assignment 1 - Template Makefile
-CC = g++
-LDFLAGS = -lpthread
-CFLAGS =  -g -Wall -O0 `pkg-config --cflags --libs opencv` -mfpu=neon -mcpu=Cortex-A8 -lperf #`pkg-config --libs --cflags libperf`
+SHELL=/bin/bash
+CC = /usr/bin/g++-8
+LDFLAGS = #-lpthread
+CFLAGS =  -g -Wall -O0 `pkg-config --cflags --libs opencv` -lOpenCL
 BINARY = sobel
 C_FILES = $(shell find . -name "*.cpp")
 OBJS = $(C_FILES:.cpp=.o)
-
-perf_test: perf_test.o
-	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@ 
 
 all: .depend $(BINARY)
 

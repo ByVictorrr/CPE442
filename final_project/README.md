@@ -1,90 +1,199 @@
-## CPE 442 : Performance of sobel program
+# CPE 442 : Final Project : GPU Accelerated Sobel Filter
 
-## Author(s)
+# Author(s)
 * Victor Delaplaine
 * Tristan Chutka
 
+# Video link
+* [Video demonstrating the program with GPU acceleration.](https://youtu.be/i1DkAqWu_ic)
 
-# functions
-`struct libperf_data * libperf_initialize(int pid, int cpu)`
-    * `Description`: This function initalizes the library
-    * `pid`: Can pass in `gettid()`/`getpid()` value, -1 for current process 
-    * `cpu`: 
+# Timing Table
+|                 | Single | Multithreaded |    GPU    |
+|-----------------|--------|---------------|-----------|
+|average SPF |  2.182  |     1.523      |   1.278   |
+
+Since the standard unit of video (frames per second) is not applicable when dealing with the incredibly under-powered Pi 3, seconds per frame (SPF) was used instead. Time was measured from the import of the Mat object to the display of the filtered image. For the multithreaded program, the average time of all threads was measured and divided by the number of buffered frames. 
+
+## Optimizations
+This program is an even further improvement upon the last assignment(s), as it impliments GPGPU encoding for the Sobel and Grayscale kernerls. 
+
+The Pi 3 has a [VideoCore IV Graphics coproccessor](https://en.wikipedia.org/wiki/VideoCore#Table_of_SoCs_adopting_VideoCore_SIP_blocks) with roughly 24GFLOPS of compute power, not excedingly fast, but enough to see marginal performance gains. The Grayscale and Sobel shader cores are created in OpenCL, support for which is integrated into OpenCV (through the TransparentAPI OpenCV-OpenCL integration utilities), and the [VC4C compiler](https://github.com/doe300/VC4C) providing partial OpenCL 1.2 support on the RPi VideoCore IV. 
+
+### What is OpenCL?
+* Open Computing Language (OpenCL) is a portable framework that executes across different devices such as central processing untis (CPUs), graphics procecssing units (GPUs), digital signal processors(DSPs), field-programmable gate arrays (FPGAs) and other processors or hardware accelerators. 
+* It specifies its language in C99 and C++11 for programing these devices via API's to control and execute programs on the compute devices.
+* It provides a standard interface for parallel computing by using task- and data-based paralleism.
+
+#### OpenCL Architecture
+* OpenCL has a certain architecture to it in order to accomplish running code on differnt types of devices such as a GPU, FPGA, ect.
+* Different abstractions involve:
+    1. Platform
+    2. Context
+    3. Device
+    4. Kernels
+    5. Buffers
+    6. CommandQueue
+
+![overview](https://i.imgur.com/tMIsjbs.png)
+
+##### Platform
+* A platform defines a specific instance of OpenCL software installed on your computer
+
+[cl_int clGetPlatformIDs(cl_uint num_entries,cl_platform_id *platforms,cl_uint *num_platforms](https://www.khronos.org/registry/OpenCL/sdk/1.0/docs/man/xhtml/clGetPlatformIDs.html)
+
+    * The above function is used to return a list of platforms installed on your computer
+
+![platform model](https://i.imgur.com/GsE0M9B.png)
+
+##### Context
+* This is used so that differnt OpenCL Devices would have the ability to share memory.
+* Its also a way to link queues, and buffers to the OpenCL Devices.
+
+[cl_context clCreateContext(cl_context_properties *properties,cl_uint num_devices,const cl_device_id *devices,void *pfn_notify (const char *errinfo,const void *private_info,size_t cb, void *user_data),void *user_data,cl_int *errcode_ret)](https://www.khronos.org/registry/OpenCL/sdk/1.0/docs/man/xhtml/clCreateContext.html)
+
+##### Device
+* OpenCL uses differnt ways to describe devices, it could be the CPU, GPU, ect.
+* The host CPU can be looked as two things: 
+    1. Host device
+    2. OpenCL device
+
+* You feed each device a command queue and buffers via the context
+
+[cl_int clGetDeviceIDs(	cl_platform_id platform, cl_device_type device_type,cl_uint num_entries,cl_device_id *devices,cl_uint *num_devices)](https://www.khronos.org/registry/OpenCL/sdk/1.0/docs/man/xhtml/clGetDeviceIDs.html)
+
+##### Programs
+* This is where you read in your source code for your kernel and compile it via the OpenCL compiler
+[cl_program clCreateProgramWithSource (	cl_context context,cl_uint count,const char **strings,const size_t *lengths,cl_int *errcode_ret)](https://www.khronos.org/registry/OpenCL/sdk/1.0/docs/man/xhtml/clCreateProgramWithSource.html)
+
+##### Kernels
+A kernel is a function written in OpenCL framework that executable on the computing devices. The number of threads to be spawned is known as a workgroup, and can be broken into several factors:
+    * The global size, which is the total number of work-items
+    * The local size, which is the number of work-items per work-group
+    * The number of work-groups is the global size / local size
+    
+There is no limit on the number of threads that can be spawned. For our application, the kernels launch 1 thread per pixel, with the grayscale only utilizing 1 dimension (total thread count of rows * cols), while the sobel kernel utilizes 2 dimensions for ease of addressing (cols is the number of threads in dimension 1, or x, and rows the number in dimension 2, or y)
+
+You can seperate this function to be run on different space 1D,2D,3D.
+* For Example, with a 100x100 image
+    * I could seperate run 1 thread for each image
+    * get_global_id(dim): gets the global id of each work-item
+        * dim=0 (x-direction)
+        * dim=1 (y-direction)
+        * dim=2 (z-direction)
+    * Each thread would be assigned a x and y via get_global_id and work on individual pixels. In this example 100000 threads would be spawned, 100 in dimension x, and 100 in dimension y. 
+
+`Example Kernel Source code to enhance each pixlels green channel by 10`
+```c
+    // enhance_green_10.cl
+    // input: 3 channel CV_8UC1 (read/write) 
+    // input[3*gid+0]= b, input[3*gid+1] = g, input[3*gid+2]=r
+    __kernel void enchance_green_10(__global uchar *input){
+        int gid = get_global_gid(0);
+        input[gid*3+1] = input[gid*3+1]+10;
+    }
+    
+```
+* The above openCL kernel has its own [datatypes and function](https://www.khronos.org/registry/OpenCL/specs/2.2/html/OpenCL_C.html)
+* To pass arguments to the kernel (function) use [cl_int clSetKernelArg(cl_kernel kernel,cl_uint arg_index,size_t arg_size,const void *arg_value)](https://www.khronos.org/registry/OpenCL/sdk/1.1/docs/man/xhtml/clSetKernelArg.html)
+* The above program will be compiled with using the program object, and be stored in a kernel object.
+
+
+Address spaces can be prefixed with scope declarations:
+* `constant` A small portion of cached global memory visible by all workers. Use it if you can, read only.
+* `global` Slow, visible by all, read or write. It is where all your data will end, so some accesses to it are always necessary.
+* `local` Do you need to share something in a local group? Use local! Do all your local workers access the same global memory? Use local! Local memory is only visible inside local workers, and is limited in size, however is very fast.
+* `private` Memory that is only visible to a worker, consider it like registers. All non defined values are private by default.
+
+
+![memory_space_visual](https://i.imgur.com/5zx3KBc.png)
+
+
+###### Buffers
+* This is a way for us to get/put data into our devices, by putting writing/reading commands int our queue from the buffer
+* Usually these buffers are created for the arguments of the kernel.
+* Some likely to be used buffers are images/buffers
+
+`Create Buffer`
+[cl_mem clCreateBuffer (cl_context context,cl_mem_flags flags, size_t size,void *host_ptr,cl_int *errcode_ret)](https://www.khronos.org/registry/OpenCL/sdk/1.0/docs/man/xhtml/clCreateBuffer.html)
+
+
+
+`Create Image`
+
+[cl_mem clCreateImage (	cl_context context,cl_mem_flags flags,const cl_image_format *image_format,const cl_image_desc *image_desc,void *host_ptr,cl_int *errcode_ret)](https://www.khronos.org/registry/OpenCL/sdk/1.2/docs/man/xhtml/clCreateImage.html)
+
+
+###### Command Queue
+* This is a way to feed the device command.
+* For example say we want to write/read from a buffer in our device
+    * We can put the commands in the queue and specifiy the host_ptr where to store/load from/to
+
+`Create Command Queue`
+
+[cl_command_queue clCreateCommandQueue(	cl_context context,cl_device_id device,cl_command_queue_properties properties,cl_int *errcode_ret)](https://www.khronos.org/registry/OpenCL/sdk/1.0/docs/man/xhtml/clCreateCommandQueue.html)
+
+`Writing to the buffer`
+
+[cl_int clEnqueueWriteBuffer (	cl_command_queue command_queue,cl_mem buffer,cl_bool blocking_write,size_t offset,size_t cb,const void *ptr, cl_uint num_events_in_wait_list, const cl_event *event_wait_list,cl_event *event)](https://www.khronos.org/registry/OpenCL/sdk/1.0/docs/man/xhtml/clEnqueueWriteBuffer.html)
+
+`Reading from the buffer`
+
+[cl_int clEnqueueReadBuffer (	cl_command_queue command_queue,cl_mem buffer,cl_bool blocking_read,size_t offset,size_t cb,void *ptr,cl_uint num_events_in_wait_list,const cl_event *event_wait_list,cl_event *event)](https://www.khronos.org/registry/OpenCL/sdk/1.0/docs/man/xhtml/clEnqueueReadBuffer.html)
 
 
 
 
+### Installation
+#### Dependencies
+```bash
+$ sudo apt-get update
+$ sudo apt-get upgrade
 
+$ sudo apt-get install cmake git
+$ sudo apt-get install ocl-icd-opencl-dev ocl-icd-dev
+$ sudo apt-get install opencl-headers
+$ sudo apt-get install clinfo
+$ sudo apt-get install libraspberrypi-dev
 
+$ sudo apt-get install clang clang-format clang-tidy
+```
 
+#### Build Library from source
+```bash
+$ mkdir -p ~/opencl
+$ cd ~/opencl
+$ git clone https://github.com/doe300/VC4CLStdLib.git
+$ git clone https://github.com/doe300/VC4CL.git
+$ git clone https://github.com/doe300/VC4C.git
 
+$ cd ~/opencl/VC4CLStdLib
+$ mkdir build
+$ cd build
+$ cmake ..
+$ make
+$ sudo make install
+$ sudo ldconfig
 
+$ cd ~/opencl/VC4C
+$ mkdir build
+$ cd build
+$ cmake ..
+$ make
+$ sudo make install
+$ sudo ldconfig
 
+$ cd ~/opencl/VC4CL
+$ mkdir build
+$ cd build
+$ cmake ..
+$ make
+$ sudo make install
+$ sudo ldconfig
+```
 
+### Utilization
+VC4C targets OpenCL 1.2. To define this in a program, inlucde `#define CL_TARGET_OPENCL_VERSION 120` at the begining of the source file (note that this line must be found *before* the `#include CL/cl.h`).
 
+Syntax is standard OpenCL 1.2, with work size equal to the total pixel count for both kernels, with the sobel kernel using a 2D work size depth (allowing for easy retrieval of x and y coordinates).
 
-
-
-
-
-
-
-
-
-
-
-
-## Profiling C/C++ Applications
-* This tutorials is to show how to profile an application. For this task we have chosen the Linux tool `perf`. This tool is called Performance Counters for Linux (PCL), or perf_events. 
-
-This event tool can help us answer some of the questions:
-* Why is the kernel on-CPU so much? What code-paths?
-* Which code-paths are causing CPU level 2 cache misses?
-* Are the CPUs stalled on memory I/O?
-* Which code-paths are allocating memory, and how much?
-* What is triggering TCP retransmits?
-* Is a certain kernel function being called, and how often?
-* What reasons are threads leaving the CPU?
-
-
-![ perf_event event sources ](http://www.brendangregg.com/perf_events/perf_events_map.png)
-
-## Installing libperf
-`sudo apt update`
-`sudo apt install linux-tools-$(uname -r)`
-
-## Usage
-* To list all currently known events for your architecture run:
-    `perf list`
-![ perf list ](https://i.imgur.com/l6ODbDq.png)
-
-**The above case shows me running the `perf list` command on a raspberry pi 4**
-
-The idea of perf events are to use a counter to see how many of those events occur. You can also see the architecure specific counters (armv_* events).
-
-## Events
-* perf_events are ways to get statistics of the events, by using internal counters for each event.
-* The `perf stat -e <event1, event2, .., eventn> <command>` gives you a print out of the hardware counters for each event.
-    ![performance run](https://i.imgur.com/7LB4JPH.png)
-
-**The above shows you some basic events it give you by default**
-
-### Cache Events
-* For our case we may want to find the number of:
-    * L1 data cache misses so:
-    ![ L1 cache misses ](https://i.imgur.com/D3vYDQw.png)
-    * L2 data cache misses, but is the L2 Cache the Last Level Cache (LLC) (Look below)
-    ![ L2 cache misses ](https://i.imgur.com/fBOFnPA.png)
-
-    ![ Cortex-A53 ](https://images.anandtech.com/doci/7591/Cortex-A53-large_678x452.png)
-    * This pictures of the `Cortex-A53` architecture helps indeicate that L2 is the LLC
-
-### Architecture specific events
-* Say we want to count the number of cpu cycles it takes to run your program:
-    ![cpu cycles](https://i.imgur.com/PizsN16.png)
-
-* I found the architecture specific event in the `perf list` table
-    * Specific to the armv7_cortex_a7
-
-## Reference(s) for `perf`
-[ Linux Perf Examples ](http://www.brendangregg.com/perf.html)
+Other things to note: the first input image is RGB, and thus has a spacing of 3 `unsigned char`s per pixel. GPU-side allocated memory must take this into account. 
